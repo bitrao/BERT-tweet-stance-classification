@@ -1,13 +1,8 @@
 import torch
 from torch import nn
 from transformers import AutoTokenizer, AutoModel, AdamW
-from torch.utils.data import DataLoader
-import pandas as pd
-import numpy as np
-from sklearn.model_selection import train_test_split
-from sklearn.metrics import f1_score, accuracy_score
-from data.stance_dataset import StanceDataset
 
+from sklearn.metrics import f1_score, accuracy_score
 
 class StanceClassifier(nn.Module):
     def __init__(self, model_name='bert-base-uncased', num_classes=3):
@@ -25,89 +20,59 @@ class StanceClassifier(nn.Module):
         pooled_output = self.dropout(pooled_output)
         logits = self.classifier(pooled_output)
         return logits
-
-def train_model(model, train_loader, val_loader, device, num_epochs=3):
-    optimizer = AdamW(model.parameters(), lr=2e-5)
-    criterion = nn.CrossEntropyLoss()
-    model = model.to(device)
     
-    best_val_f1 = 0
-    
-    for epoch in range(num_epochs):
-        model.train()
-        train_loss = 0
+    def train(self, train_loader, val_loader, device, num_epochs=3):
+        optimizer = AdamW(model.parameters(), lr=2e-5)
+        criterion = nn.CrossEntropyLoss()
+        model = model.to(device)
         
-        for batch in train_loader:
-            input_ids = batch['input_ids'].to(device)
-            attention_mask = batch['attention_mask'].to(device)
-            stances = batch['stance'].to(device)
+        best_val_f1 = 0
+        
+        for epoch in range(num_epochs):
+            model.train()
+            train_loss = 0
             
-            optimizer.zero_grad()
-            outputs = model(input_ids, attention_mask)
-            loss = criterion(outputs, stances)
-            loss.backward()
-            optimizer.step()
-            
-            train_loss += loss.item()
-        
-        # Validation
-        model.eval()
-        val_preds = []
-        val_true = []
-        
-        with torch.no_grad():
-            for batch in val_loader:
+            for batch in train_loader:
                 input_ids = batch['input_ids'].to(device)
                 attention_mask = batch['attention_mask'].to(device)
-                stances = batch['stance']
+                stances = batch['stance'].to(device)
                 
+                optimizer.zero_grad()
                 outputs = model(input_ids, attention_mask)
-                preds = torch.argmax(outputs, dim=1).cpu().numpy()
+                loss = criterion(outputs, stances)
+                loss.backward()
+                optimizer.step()
                 
-                val_preds.extend(preds)
-                val_true.extend(stances.numpy())
-        
-        val_f1 = f1_score(val_true, val_preds, average='macro')
-        val_acc = accuracy_score(val_true, val_preds)
-        
-        print(f'Epoch {epoch + 1}:')
-        print(f'Average training loss: {train_loss / len(train_loader)}')
-        print(f'Validation F1: {val_f1:.4f}')
-        print(f'Validation Accuracy: {val_acc:.4f}')
-        
-        if val_f1 > best_val_f1:
-            best_val_f1 = val_f1
-            torch.save(model.state_dict(), 'best_model.pt')
-
-def prepare_data(df, tokenizer, batch_size=16):
-    # Assuming df has columns: 'text', 'target', 'stance'
-    # Convert stance labels to numeric
-    stance_map = {'FAVOR': 0, 'AGAINST': 1, 'NONE': 2}
-    df['stance_numeric'] = df['stance'].map(stance_map)
-    
-    # Split data
-    train_df, val_df = train_test_split(df, test_size=0.2, random_state=42)
-    
-    # Create datasets
-    train_dataset = StanceDataset(
-        train_df['text'].values,
-        train_df['target'].values,
-        train_df['stance_numeric'].values,
-        tokenizer
-    )
-    
-    val_dataset = StanceDataset(
-        val_df['text'].values,
-        val_df['target'].values,
-        val_df['stance_numeric'].values,
-        tokenizer
-    )
-    
-    # Create dataloaders
-    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
-    val_loader = DataLoader(val_dataset, batch_size=batch_size)
-    
-    return train_loader, val_loader
+                train_loss += loss.item()
+            
+            # Validation
+            model.eval()
+            val_preds = []
+            val_true = []
+            
+            with torch.no_grad():
+                for batch in val_loader:
+                    input_ids = batch['input_ids'].to(device)
+                    attention_mask = batch['attention_mask'].to(device)
+                    stances = batch['stance']
+                    
+                    outputs = model(input_ids, attention_mask)
+                    preds = torch.argmax(outputs, dim=1).cpu().numpy()
+                    
+                    val_preds.extend(preds)
+                    val_true.extend(stances.numpy())
+            
+            val_f1 = f1_score(val_true, val_preds, average='macro')
+            val_acc = accuracy_score(val_true, val_preds)
+            
+            print(f'Epoch {epoch + 1}:')
+            print(f'Average training loss: {train_loss / len(train_loader)}')
+            print(f'Validation F1: {val_f1:.4f}')
+            print(f'Validation Accuracy: {val_acc:.4f}')
+            
+            if val_f1 > best_val_f1:
+                best_val_f1 = val_f1
+                torch.save(model.state_dict(), 'best_model.pt')
 
 def main():
     # Initialize tokenizer and model
