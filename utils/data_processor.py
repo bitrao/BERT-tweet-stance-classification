@@ -1,23 +1,15 @@
 from data.stance_dataset import StanceDataset
 from torch.utils.data import DataLoader
-import pandas as pd
-import numpy as np
 from sklearn.model_selection import train_test_split
+from sklearn.utils.class_weight import compute_class_weight
 import re
-import string
+import numpy as np
 import nltk
 nltk.download('punkt')
 nltk.download('stopwords')
 from nltk.corpus import stopwords
-from nltk.tokenize import word_tokenize
-
 import spacy
 
-
-import re
-import string
-from nltk.corpus import stopwords
-import spacy
 
 # Compile regex for emoji removal once
 emoji_pattern = re.compile(
@@ -30,7 +22,8 @@ emoji_pattern = re.compile(
     flags=re.UNICODE,
 )
 
-pun = """!"$%&'()*+,-./:;<=>?[\]^`{|}~"""
+pun =  """!"$%&'()*+,-./:;<=>?[\\]^`{|}~"""
+
 stop_words = set(stopwords.words('english'))
 
 def deEmojify(text):
@@ -88,27 +81,32 @@ def preprocess_tweet(tweet):
 
 
 
-def prepare_data(df, tokenizer, batch_size=16):
-    # Assuming df has columns: 'text', 'target', 'stance'
+def prepare_data(df, tokenizer, batch_size=8, weighted=False):
     # Convert stance labels to numeric
     stance_map = {'FAVOR': 0, 'AGAINST': 1, 'NONE': 2}
-    df['stance_numeric'] = df['stance'].map(stance_map)
+    df['Stance_Numeric'] = df['Stance'].map(stance_map)
+    
+    if weighted:
+        class_counts = df['Stance_Numeric'].value_counts()
+
+        classes = np.array(class_counts.index)
+        class_weights = compute_class_weight('balanced', classes=classes, y=df['Stance_Numeric'])
     
     # Split data
     train_df, val_df = train_test_split(df, test_size=0.2, random_state=42)
     
     # Create datasets
     train_dataset = StanceDataset(
-        train_df['text'].values,
-        train_df['target'].values,
-        train_df['stance_numeric'].values,
+        train_df['Tweet'].values,
+        train_df['Target'].values,
+        train_df['Stance_Numeric'].values,
         tokenizer
     )
     
     val_dataset = StanceDataset(
-        val_df['text'].values,
-        val_df['target'].values,
-        val_df['stance_numeric'].values,
+        val_df['Tweet'].values,
+        val_df['Target'].values,
+        val_df['Stance_Numeric'].values,
         tokenizer
     )
     
@@ -116,4 +114,7 @@ def prepare_data(df, tokenizer, batch_size=16):
     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
     val_loader = DataLoader(val_dataset, batch_size=batch_size)
     
-    return train_loader, val_loader
+    if weighted:
+        return train_loader, val_loader, class_weights
+    else:
+        return train_loader, val_loader
