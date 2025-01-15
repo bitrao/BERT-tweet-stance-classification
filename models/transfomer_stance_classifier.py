@@ -1,4 +1,4 @@
-from transformers import AutoModelForSequenceClassification, AutoTokenizer, TrainingArguments, Trainer
+from transformers import pipeline, AutoModelForSequenceClassification, AutoTokenizer, TrainingArguments, Trainer, EarlyStoppingCallback
 from sklearn.metrics import f1_score
 import numpy as np
 import os
@@ -29,36 +29,48 @@ class StanceClassifier:
     
     def train(self, train_texts, train_targets, train_stances, 
               val_texts=None, val_targets=None, val_stances=None,
-              batch_size=16, num_epochs=3, output_dir="./stance_model"):
+              batch_size=16, num_epochs=3, early_stopping_patience=3, output_dir="./stance_model"):
         
         train_dataset = StanceDataset(train_texts, train_targets, train_stances, self.tokenizer)
-        val_dataset = StanceDataset(val_texts, val_targets, val_stances, self.tokenizer) if val_texts else None
+        val_dataset = StanceDataset(val_texts, val_targets, val_stances, self.tokenizer) if val_texts is not None else None
 
         training_args = TrainingArguments(
             output_dir=output_dir,
             num_train_epochs=num_epochs,
             per_device_train_batch_size=batch_size,
-            evaluation_strategy="epoch" if val_dataset else "no",
+            eval_strategy="epoch" if val_dataset else "no",
             save_strategy="epoch",
             load_best_model_at_end=True if val_dataset else False,
-            metric_for_best_model="f1"
+            metric_for_best_model="f1",
+            logging_strategy="epoch"
+            # label_names=["stance"]
         )
         
-        trainer = Trainer(
+        self.trainer = Trainer(
             model=self.model,
             args=training_args,
             train_dataset=train_dataset,
             eval_dataset=val_dataset,
-            compute_metrics=self._compute_metrics
+            compute_metrics=self.compute_metrics,
+            callbacks=[EarlyStoppingCallback(early_stopping_patience)]
         )
-        
-        trainer.train()
+
+        self.trainer.train()
         self.save_model(output_dir)
     
     def predict(self, texts, targets):
-        inputs = self.tokenize_data(texts, targets)
-        outputs = self.model(**inputs)
-        return np.argmax(outputs.logits.detach().numpy(), axis=1)
+        pipe = pipeline("text-classification", model=self.model, batch_size=16, tokenizer=self.tokenizer)
+        logits = pipe([f"{text} [SEP] {target}" for text, target in zip(texts, targets)],
+                      **{"padding": True, "truncation": True, "max_length": 128})
+        # inputs = self.tokenize_data(texts, targets)
+        # outputs = self.model(**inputs)
+        # return np.argmax(outputs.logits.detach().numpy(), axis=1)
+        return logits
+
+    def evaluate(self, test_texts, test_targets, test_stances):
+        test_dataset = StanceDataset(test_texts, test_targets, test_stances, self.tokenizer)
+
+        return self.trainer.evaluate(test_dataset)
     
     def save_model(self, output_dir):
         os.makedirs(output_dir, exist_ok=True)

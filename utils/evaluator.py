@@ -13,10 +13,12 @@ class StanceClassifierEvaluator:
     
         
     def evaluate(self, y_true: Union[List, np.ndarray], 
-                y_pred: Union[List, np.ndarray]) -> dict:
+                y_pred: Union[List, np.ndarray],
+                y_target: Union[List, np.ndarray]) -> dict:
         # Convert inputs to numpy arrays if needed
         y_true = np.array(y_true)
         y_pred = np.array(y_pred)
+        y_target = np.array(y_target)
         
         # Calculate confusion matrix
         cm = confusion_matrix(y_true, y_pred)
@@ -38,13 +40,21 @@ class StanceClassifierEvaluator:
         else:
             unique_labels = sorted(set(y_true))
             for i in unique_labels:
-                per_class_f1[f'Class {i}'] = f1_score(y_true == i, y_pred == i)
+                per_class_f1[f'Target {i}'] = f1_score(y_true == i, y_pred == i)
+
+        # Calculate per-target F1 scores
+        per_target_f1 = {}
+        unique_targets = sorted(set(np.unique(y_target)))
+        for i in unique_targets:
+            mask = (y_target == i)
+            per_target_f1[f'Class {i}'] = f1_score(y_true[mask], y_pred[mask], average="macro")
                 
         return {
             'confusion_matrix': cm,
             'classification_report': report,
             'overall_f1': overall_f1,
-            'per_class_f1': per_class_f1
+            'per_class_f1': per_class_f1,
+            'per_target_f1': per_target_f1
         }
     
     def plot_confusion_matrix(self, confusion_matrix: np.ndarray,
@@ -69,6 +79,10 @@ class StanceClassifierEvaluator:
         print("\nPer-class F1 Scores:")
         for class_name, f1 in metrics['per_class_f1'].items():
             print(f"{class_name}: {f1:.4f}")
+
+        print("\nPer-target F1 Scores:")
+        for target, f1 in metrics['per_target_f1'].items():
+            print(f"{target}: {f1:.4f}")
             
         print("\nDetailed Classification Report:")
         report = metrics['classification_report']

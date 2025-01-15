@@ -31,5 +31,5 @@ class StanceDataset(Dataset):
         return {
             'input_ids': encoding['input_ids'].flatten(),
             'attention_mask': encoding['attention_mask'].flatten(),
-            'stance': torch.tensor(self.stances[idx], dtype=torch.long)
+            'labels': torch.tensor(self.stances[idx], dtype=torch.long)
         }
