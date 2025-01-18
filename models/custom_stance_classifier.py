@@ -85,7 +85,7 @@ class CustomStanceClassifier(nn.Module):
             for batch in train_loader:
                 input_ids = batch['input_ids'].to(device)
                 attention_mask = batch['attention_mask'].to(device)
-                stances = batch['stance'].to(device)
+                stances = batch['labels'].to(device)
                 
                 optimizer.zero_grad()
                 outputs = self(input_ids, attention_mask)
@@ -107,7 +107,7 @@ class CustomStanceClassifier(nn.Module):
                 for batch in val_loader:
                     input_ids = batch['input_ids'].to(device)
                     attention_mask = batch['attention_mask'].to(device)
-                    stances = batch['stance'].to(device)
+                    stances = batch['labels'].to(device)
                     
                     outputs = self(input_ids, attention_mask)
                     loss = criterion(outputs, stances)
